@@ -1,7 +1,21 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "https://glotrition.com",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+};
 
+function jsonResponse(data: unknown, status = 200) {
+  return new NextResponse(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
+  });
+}
 
 function pickWeightedReward() {
   const rewards = [
@@ -24,11 +38,15 @@ function shouldAssignFreeOrder() {
   return Math.random() < 0.05;
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: corsHeaders,
+  });
+}
+
 export async function POST(req: Request) {
   try {
-    console.log("URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
-    console.log("KEY:", process.env.SUPABASE_SECRET_KEY! ? "exists" : "missing");
-    
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SECRET_KEY!
@@ -37,13 +55,9 @@ export async function POST(req: Request) {
     const { email } = await req.json();
 
     if (!email) {
-      return NextResponse.json(
-        { error: "Email is required" },
-        { status: 400 }
-      );
+      return jsonResponse({ error: "Email is required" }, 400);
     }
 
-    console.log("CHECKING campaign_rewards for email:", email);
     const { data: existing, error: existingError } = await supabase
       .from("campaign_rewards")
       .select("*")
@@ -52,14 +66,11 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (existingError) {
-      return NextResponse.json(
-        { error: existingError.message },
-        { status: 500 }
-      );
+      return jsonResponse({ error: existingError.message }, 500);
     }
 
     if (existing) {
-      return NextResponse.json({
+      return jsonResponse({
         alreadyAssigned: true,
         reward: existing,
       });
@@ -78,10 +89,7 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       if (freeCodeError) {
-        return NextResponse.json(
-          { error: freeCodeError.message },
-          { status: 500 }
-        );
+        return jsonResponse({ error: freeCodeError.message }, 500);
       }
 
       if (freeCode) {
@@ -102,10 +110,7 @@ export async function POST(req: Request) {
           .eq("id", freeCode.id);
 
         if (updateError) {
-          return NextResponse.json(
-            { error: updateError.message },
-            { status: 500 }
-          );
+          return jsonResponse({ error: updateError.message }, 500);
         }
       }
     }
@@ -128,25 +133,17 @@ export async function POST(req: Request) {
       .single();
 
     if (insertError) {
-      return NextResponse.json(
-        { error: insertError.message },
-        { status: 500 }
-      );
+      return jsonResponse({ error: insertError.message }, 500);
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       alreadyAssigned: false,
       reward: inserted,
     });
   } catch (error) {
-    console.error("FULL ERROR:", error);
-    
     const message =
-    error instanceof Error ? error.message : "Unexpected server error";
+      error instanceof Error ? error.message : "Unexpected server error";
 
-    return NextResponse.json(
-      { error: message },
-      { status: 500 }
-    );
+    return jsonResponse({ error: message }, 500);
   }
 }
